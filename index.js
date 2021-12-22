@@ -1,17 +1,27 @@
 const canvas = document.getElementById('canvas');
 const context = canvas.getContext('2d');
 
-const SHOW_POINTS = true;
-const SHOW_CONTROLS = true;
-const THICKNESS = 10;
+// Larger for demo
+// const SHOW_POINTS = true;
+// const SHOW_CONTROLS = true;
+// const LINEARITY_THRESHOLD = 5;
+// const DISTANCE_THRESHOLD = 1000;
+// const CONTROL_DAMPING = 4;
+
+// Smaller for actual use
+const SHOW_POINTS = false;
+const SHOW_CONTROLS = false;
+const LINEARITY_THRESHOLD = 4;
+const DISTANCE_THRESHOLD = 20;
+const CONTROL_DAMPING = 2;
+
+const THICKNESS = 30;
 const FRAMERATE = 60;
 const SEGMENT_SIZE = 2;
 const STROKE_COLOR = '#121212';
 const POINT_COLOR = '#1dde64';
 const CONTROL_COLOR = '#00bbff';
-const LINEARITY_THRESHOLD = 10;
-const DISTANCE_THRESHOLD = 500;
-const CONTROL_DAMPING = 3;
+
 
 let strokes = [];
 
@@ -33,8 +43,6 @@ const sum = (p, q) => ({ x: p.x + q.x, y: p.y + q.y });
 const scale = (p, scale) => ({ x: p.x * scale, y: p.y * scale });
 
 const dot = (p, q) => p.x * q.x + p.y * q.y;
-
-const negate = (p) => ({ x: -p.x, y: -p.y });
 
 const clearCanvas = () => {
   context.clearRect(0, 0, canvas.width, canvas.height);
@@ -76,6 +84,7 @@ const simplify = (points, threshold) => {
   return simplified;
 };
 
+let tangent;
 const drawStroke = (points) => {
   // Save previous context state
   context.save();
@@ -85,7 +94,6 @@ const drawStroke = (points) => {
   context.fillColor = STROKE_COLOR;
   context.lineWidth = THICKNESS;
 
-  let tangent;
   for (let n = 0; n < points.length; n++) {
     const p0 = points[n - 2];
     const p1 = points[n - 1];
@@ -109,7 +117,7 @@ const drawStroke = (points) => {
 
     // Draw quadratic bezier with right bias
     else if (!p0 && p1 && p2 && p3) {
-      tangent = normalize(difference(p2, p1));
+      tangent = normalize(difference(p3, p1));
       const c = difference(p2, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
 
       context.beginPath();
@@ -156,9 +164,9 @@ const drawStroke = (points) => {
     // Draw cubic bezier
     else if (p0 && p1 && p2 && p3) {
       const c0 = sum(p1, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
-      tangent = normalize(difference(p2, c0));
-      const c1 = difference(p2, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
 
+      tangent = normalize(difference(p3, c0));
+      const c1 = difference(p2, scale(tangent, distance(c0, p2) / CONTROL_DAMPING));
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
