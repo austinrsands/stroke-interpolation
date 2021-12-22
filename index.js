@@ -1,16 +1,17 @@
 const canvas = document.getElementById('canvas');
 const context = canvas.getContext('2d');
 
-const THICKNESS = 20;
+const SHOW_POINTS = true;
+const SHOW_CONTROLS = true;
+const THICKNESS = 10;
 const FRAMERATE = 60;
-const SEGMENT_SIZE = 3;
-const DAMPING = 2;
-const THRESHOLD = 20;
+const SEGMENT_SIZE = 2;
 const STROKE_COLOR = '#121212';
 const POINT_COLOR = '#1dde64';
 const CONTROL_COLOR = '#00bbff';
-const SHOW_POINTS = true;
-const SHOW_CONTROLS = true;
+const LINEARITY_THRESHOLD = 6;
+const DISTANCE_THRESHOLD = 60;
+const CONTROL_DAMPING = 3;
 
 let strokes = [];
 
@@ -60,7 +61,7 @@ const simplify = (points, threshold) => {
   for (let n = 0; n < points.length; n++) {
     const current = points[n];
     const next = points[n + 1];
-    if (!anchor || !next || !isLinearSequence(anchor, current, next, threshold)) {
+    if (!anchor || !next || !isLinearSequence(anchor, current, next, threshold) || distance(anchor, current) > DISTANCE_THRESHOLD) {
       anchor = current;
       simplified.push(current);
     }
@@ -100,7 +101,7 @@ const drawStroke = (points) => {
 
     // Draw quadratic bezier with right bias
     else if (!p0 && p1 && p2 && p3) {
-      const c = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / DAMPING));
+      const c = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / CONTROL_DAMPING));
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
@@ -122,7 +123,7 @@ const drawStroke = (points) => {
 
     // Draw quadratic bezier with left bias
     else if (p0 && p1 && p2 && !p3) {
-      const c = sum(p1, scale(normalize(difference(p2, p0)), distance(p1, p2) / DAMPING));
+      const c = sum(p1, scale(normalize(difference(p2, p0)), distance(p1, p2) / CONTROL_DAMPING));
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
@@ -144,8 +145,8 @@ const drawStroke = (points) => {
 
     // Draw cubic bezier
     else if (p0 && p1 && p2 && p3) {
-      const c0 = sum(p1, scale(normalize(difference(p2, p0)), distance(p1, p2) / DAMPING));
-      const c1 = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / DAMPING));
+      const c0 = sum(p1, scale(normalize(difference(p2, p0)), distance(p1, p2) / CONTROL_DAMPING));
+      const c1 = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / CONTROL_DAMPING));
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
@@ -190,7 +191,7 @@ const update = () => {
   clearCanvas();
 
   strokes.forEach((stroke) => {
-    const simplified = simplify(stroke, THRESHOLD);
+    const simplified = simplify(stroke, LINEARITY_THRESHOLD);
     drawStroke(simplified);
   });
 };
