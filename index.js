@@ -1,12 +1,16 @@
 const canvas = document.getElementById('canvas');
 const context = canvas.getContext('2d');
 
-const RADIUS = 10;
+const THICKNESS = 20;
 const FRAMERATE = 60;
-const SEGMENT_SIZE = 5;
+const SEGMENT_SIZE = 3;
 const DAMPING = 2;
-const THRESHOLD = 5;
+const THRESHOLD = 20;
+const STROKE_COLOR = '#121212';
+const POINT_COLOR = '#1dde64';
 const CONTROL_COLOR = '#00bbff';
+const SHOW_POINTS = true;
+const SHOW_CONTROLS = true;
 
 let strokes = [];
 
@@ -34,62 +38,55 @@ const clearCanvas = () => {
 };
 
 const init = () => {
-  context.lineWidth = RADIUS * 2;
   context.lineCap = 'round';
   context.lineJoin = 'round';
 
   setInterval(() => requestAnimationFrame(update), 1000 / FRAMERATE);
 };
 
-const isInlineCenter = (p1, p2, p3, threshold) => {
-  const v = difference(p2, p1);
-  const u = normalize(difference(p3, p1));
-  console.log(dot(normalize(v), u));
-  const s = sum(p1, scale(u, dot(v, u)));
-  const d = distance(p2, s);
-  return d < threshold;
+const isLinearSequence = (p, q, r, threshold) => {
+  const v = difference(q, p);
+  const w = difference(r, q);
+  const u = normalize(difference(r, p));
+  const s = sum(p, scale(u, dot(v, u)));
+  const l = dot(w, u);
+  const d = distance(q, s);
+  return d < threshold && l >= 0;
 };
 
-const isInline = (p0, p1, p2, threshold) => {
-  const v = difference(p2, p1);
-  const u = normalize(difference(p1, p0));
-  const p2l = sum(p1, scale(u, dot(v, u)));
-  return distance(p2, p2l) < threshold;
+const simplify = (points, threshold) => {
+  const simplified = [];
+  let anchor;
+  for (let n = 0; n < points.length; n++) {
+    const current = points[n];
+    const next = points[n + 1];
+    if (!anchor || !next || !isLinearSequence(anchor, current, next, threshold)) {
+      anchor = current;
+      simplified.push(current);
+    }
+  }
+  return simplified;
 };
 
-const getInlinePoint = (p0, p1, p2) => {
-  const v = difference(p2, p1);
-  const u = normalize(difference(p1, p0));
-  return sum(p1, scale(u, dot(v, u)));
-};
-
-const drawSimplifiedStroke = (context, points, color, thickness, threshold) => {
+const drawStroke = (points) => {
   // Save previous context state
   context.save();
 
   // Setup parameters
-  context.strokeStyle = color;
-  context.fillColor = color;
-  context.lineWidth = thickness;
+  context.strokeStyle = STROKE_COLOR;
+  context.fillColor = STROKE_COLOR;
+  context.lineWidth = THICKNESS;
 
-  const blah = [];
-
-  let p0, p1, p2, p3;
-  // Loop until one after last to ensure every point shifts through p2
-  for (let n = 0; n <= points.length; n++) {
-    // Set current point
-    p3 = points[n];
-
-    // Simplify by ignoring unnecessary inline points
-    if (p1 && p2 && p3 && isInlineCenter(p1, p2, p3, threshold)) {
-      p2 = p3;
-      continue;
-    }
+  for (let n = 0; n < points.length; n++) {
+    const p0 = points[n - 2];
+    const p1 = points[n - 1];
+    const p2 = points[n];
+    const p3 = points[n + 1];
 
     // Draw dot
     if (!p0 && !p1 && p2 && !p3) {
       context.beginPath();
-      context.ellipse(p2.x, p2.y, thickness / 2, thickness / 2, 0, 0, Math.PI * 2);
+      context.ellipse(p2.x, p2.y, THICKNESS / 2, THICKNESS / 2, 0, 0, Math.PI * 2);
       context.fill();
     }
 
@@ -104,21 +101,23 @@ const drawSimplifiedStroke = (context, points, color, thickness, threshold) => {
     // Draw quadratic bezier with right bias
     else if (!p0 && p1 && p2 && p3) {
       const c = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / DAMPING));
-      
+
       context.beginPath();
       context.moveTo(p1.x, p1.y);
       context.quadraticCurveTo(c.x, c.y, p2.x, p2.y);
       context.stroke();
 
-      context.save();
-      context.strokeStyle = CONTROL_COLOR;
-      context.lineWidth = RADIUS;
+      if (SHOW_CONTROLS) {
+        context.save();
+        context.strokeStyle = CONTROL_COLOR;
+        context.lineWidth = THICKNESS / 2;
 
-      context.beginPath();
-      context.moveTo(c.x, c.y);
-      context.lineTo(p2.x, p2.y);
-      context.stroke();
-      context.restore();
+        context.beginPath();
+        context.moveTo(c.x, c.y);
+        context.lineTo(p2.x, p2.y);
+        context.stroke();
+        context.restore();
+      }
     }
 
     // Draw quadratic bezier with left bias
@@ -130,15 +129,17 @@ const drawSimplifiedStroke = (context, points, color, thickness, threshold) => {
       context.quadraticCurveTo(c.x, c.y, p2.x, p2.y);
       context.stroke();
 
-      context.save();
-      context.strokeStyle = CONTROL_COLOR;
-      context.lineWidth = RADIUS;
+      if (SHOW_CONTROLS) {
+        context.save();
+        context.strokeStyle = CONTROL_COLOR;
+        context.lineWidth = THICKNESS / 2;
 
-      context.beginPath();
-      context.moveTo(c.x, c.y);
-      context.lineTo(p1.x, p1.y);
-      context.stroke();
-      context.restore();
+        context.beginPath();
+        context.moveTo(c.x, c.y);
+        context.lineTo(p1.x, p1.y);
+        context.stroke();
+        context.restore();
+      }
     }
 
     // Draw cubic bezier
@@ -151,126 +152,46 @@ const drawSimplifiedStroke = (context, points, color, thickness, threshold) => {
       context.bezierCurveTo(c0.x, c0.y, c1.x, c1.y, p2.x, p2.y);
       context.stroke();
 
+      if (SHOW_CONTROLS) {
+        context.save();
+        context.strokeStyle = CONTROL_COLOR;
+        context.lineWidth = THICKNESS / 2;
+
+        context.beginPath();
+        context.moveTo(c0.x, c0.y);
+        context.lineTo(p1.x, p1.y);
+        context.stroke();
+
+        context.beginPath();
+        context.moveTo(c1.x, c1.y);
+        context.lineTo(p2.x, p2.y);
+        context.stroke();
+        context.restore();
+      }
+    }
+  }
+
+  if (SHOW_POINTS) {
+    points.forEach(point => {
       context.save();
-      context.strokeStyle = CONTROL_COLOR;
-      context.lineWidth = RADIUS;
-
+      context.fillStyle = POINT_COLOR;
       context.beginPath();
-      context.moveTo(c0.x, c0.y);
-      context.lineTo(p1.x, p1.y);
-      context.stroke();
-      
-      context.beginPath();
-      context.moveTo(c1.x, c1.y);
-      context.lineTo(p2.x, p2.y);
-      context.stroke();
+      context.ellipse(point.x, point.y, THICKNESS, THICKNESS, 0, 0, Math.PI * 2);
+      context.fill();
       context.restore();
-    }
-
-    if (p2) {
-      blah.push(p2);
-    }
-
-    // Update points
-    p0 = p1;
-    p1 = p2;
-    p2 = p3;
+    });
   }
 
   // Restore previous context state
   context.restore();
-
-  drawPoints(blah);
-};
-
-const simplify = (points, threshold) => {
-  let i = 2;
-  while (i < points.length) {
-    const p0 = points[i - 2];
-    const p1 = points[i - 1];
-    const p2 = points[i];
-    const v = difference(p2, p1);
-    const u = normalize(difference(p1, p0));
-    const p2l = sum(p1, scale(u, dot(v, u)));
-    const d = distance(p2, p2l);
-
-    if (d < threshold) {
-      if (i === points.length - 1) {
-        points[i] = p2l;
-        i++;
-      } else {
-        points.splice(i, 1);
-      }
-    } else {
-      i++;
-    }
-  }
-};
-
-const drawStroke = (stroke) => {
-  let p0 = null;
-  let p1 = null;
-  for (let n = 0; n < stroke.length; n++) {
-    let p2 = stroke[n];
-    let p3 = n + 1 < stroke.length ? stroke[n + 1] : null;
-
-    context.fillStyle = 'black';
-    if (p0 === null && p1 === null) {
-      // draw ellipse
-      context.beginPath();
-      context.ellipse(p2.x, p2.y, RADIUS, RADIUS, 0, 0, Math.PI * 2);
-      context.fill();
-    } else if (p0 === null && p3 === null) {
-      // draw line
-      context.beginPath();
-      context.moveTo(p1.x, p1.y);
-      context.lineTo(p2.x, p2.y);
-      context.stroke();
-    } else if (p0 === null && p3 !== null) {
-      // draw quadratic bezier
-      context.beginPath();
-      const c = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / DAMPING));
-      context.moveTo(p1.x, p1.y);
-      context.quadraticCurveTo(c.x, c.y, p2.x, p2.y);
-      context.stroke();
-    } else if (p0 !== null && p3 === null) {
-      // draw quadratic bezier
-      context.beginPath();
-      const c = sum(p1, scale(normalize(difference(p2, p0)), distance(p1, p2) / DAMPING));
-      context.moveTo(p1.x, p1.y);
-      context.quadraticCurveTo(c.x, c.y, p2.x, p2.y);
-      context.stroke();
-    } else if (p0 !== null && p3 !== null) {
-      // draw cubic bezier
-      const c0 = sum(p1, scale(normalize(difference(p2, p0)), distance(p1, p2) / DAMPING));
-      const c1 = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / DAMPING));
-      context.beginPath();
-      context.moveTo(p1.x, p1.y);
-      context.bezierCurveTo(c0.x, c0.y, c1.x, c1.y, p2.x, p2.y);
-      context.stroke();
-    }
-    p0 = p1;
-    p1 = p2;
-  }
-};
-
-const drawPoints = (points) => {
-  context.fillStyle = '#1dde64';
-  points.forEach((point) => {
-    context.beginPath();
-    context.ellipse(point.x, point.y, RADIUS, RADIUS, 0, 0, Math.PI * 2);
-    context.fill();
-  });
 };
 
 const update = () => {
   clearCanvas();
 
   strokes.forEach((stroke) => {
-    // simplify(stroke, THRESHOLD);
-    // drawStroke(stroke);
-    drawSimplifiedStroke(context, stroke, 'black', RADIUS * 2, THRESHOLD);
-    // drawPoints(stroke);
+    const simplified = simplify(stroke, THRESHOLD);
+    drawStroke(simplified);
   });
 };
 
@@ -298,9 +219,6 @@ window.addEventListener('keyup', (event) => {
   }
   clearCanvas();
 });
-// canvas.addEventListener('click', event => {
-//   stroke.push(getCanvasPoint({x: event.clientX, y: event.clientY}));
-// });
 
 let lastPoint = null;
 let currentStroke = null;
