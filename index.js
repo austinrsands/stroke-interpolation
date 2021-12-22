@@ -9,8 +9,8 @@ const SEGMENT_SIZE = 2;
 const STROKE_COLOR = '#121212';
 const POINT_COLOR = '#1dde64';
 const CONTROL_COLOR = '#00bbff';
-const LINEARITY_THRESHOLD = 6;
-const DISTANCE_THRESHOLD = 60;
+const LINEARITY_THRESHOLD = 10;
+const DISTANCE_THRESHOLD = 500;
 const CONTROL_DAMPING = 3;
 
 let strokes = [];
@@ -33,6 +33,8 @@ const sum = (p, q) => ({ x: p.x + q.x, y: p.y + q.y });
 const scale = (p, scale) => ({ x: p.x * scale, y: p.y * scale });
 
 const dot = (p, q) => p.x * q.x + p.y * q.y;
+
+const negate = (p) => ({ x: -p.x, y: -p.y });
 
 const clearCanvas = () => {
   context.clearRect(0, 0, canvas.width, canvas.height);
@@ -61,7 +63,12 @@ const simplify = (points, threshold) => {
   for (let n = 0; n < points.length; n++) {
     const current = points[n];
     const next = points[n + 1];
-    if (!anchor || !next || !isLinearSequence(anchor, current, next, threshold) || distance(anchor, current) > DISTANCE_THRESHOLD) {
+    if (
+      !anchor ||
+      !next ||
+      !isLinearSequence(anchor, current, next, threshold) ||
+      distance(anchor, current) > DISTANCE_THRESHOLD
+    ) {
       anchor = current;
       simplified.push(current);
     }
@@ -78,6 +85,7 @@ const drawStroke = (points) => {
   context.fillColor = STROKE_COLOR;
   context.lineWidth = THICKNESS;
 
+  let tangent;
   for (let n = 0; n < points.length; n++) {
     const p0 = points[n - 2];
     const p1 = points[n - 1];
@@ -101,7 +109,8 @@ const drawStroke = (points) => {
 
     // Draw quadratic bezier with right bias
     else if (!p0 && p1 && p2 && p3) {
-      const c = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / CONTROL_DAMPING));
+      tangent = normalize(difference(p2, p1));
+      const c = difference(p2, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
@@ -111,7 +120,7 @@ const drawStroke = (points) => {
       if (SHOW_CONTROLS) {
         context.save();
         context.strokeStyle = CONTROL_COLOR;
-        context.lineWidth = THICKNESS / 2;
+        context.lineWidth = THICKNESS;
 
         context.beginPath();
         context.moveTo(c.x, c.y);
@@ -123,7 +132,8 @@ const drawStroke = (points) => {
 
     // Draw quadratic bezier with left bias
     else if (p0 && p1 && p2 && !p3) {
-      const c = sum(p1, scale(normalize(difference(p2, p0)), distance(p1, p2) / CONTROL_DAMPING));
+      const c = sum(p1, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
+      tangent = normalize(difference(p2, c));
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
@@ -133,7 +143,7 @@ const drawStroke = (points) => {
       if (SHOW_CONTROLS) {
         context.save();
         context.strokeStyle = CONTROL_COLOR;
-        context.lineWidth = THICKNESS / 2;
+        context.lineWidth = THICKNESS;
 
         context.beginPath();
         context.moveTo(c.x, c.y);
@@ -145,8 +155,10 @@ const drawStroke = (points) => {
 
     // Draw cubic bezier
     else if (p0 && p1 && p2 && p3) {
-      const c0 = sum(p1, scale(normalize(difference(p2, p0)), distance(p1, p2) / CONTROL_DAMPING));
-      const c1 = sum(p2, scale(normalize(difference(p1, p3)), distance(p1, p2) / CONTROL_DAMPING));
+      const c0 = sum(p1, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
+      tangent = normalize(difference(p2, c0));
+      const c1 = difference(p2, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
+
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
@@ -156,7 +168,7 @@ const drawStroke = (points) => {
       if (SHOW_CONTROLS) {
         context.save();
         context.strokeStyle = CONTROL_COLOR;
-        context.lineWidth = THICKNESS / 2;
+        context.lineWidth = THICKNESS;
 
         context.beginPath();
         context.moveTo(c0.x, c0.y);
@@ -173,7 +185,7 @@ const drawStroke = (points) => {
   }
 
   if (SHOW_POINTS) {
-    points.forEach(point => {
+    points.forEach((point) => {
       context.save();
       context.fillStyle = POINT_COLOR;
       context.beginPath();
