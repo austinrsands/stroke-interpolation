@@ -22,12 +22,12 @@ const STROKE_COLOR = '#121212';
 const POINT_COLOR = '#1dde64';
 const CONTROL_COLOR = '#00bbff';
 
-
 let strokes = [];
 
 const midpoint = (p, q) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
 
-const distance = (p, q) => Math.sqrt(Math.pow(p.x - q.x, 2) + Math.pow(p.y - q.y, 2));
+const distance = (p, q) =>
+  Math.sqrt(Math.pow(p.x - q.x, 2) + Math.pow(p.y - q.y, 2));
 
 const length = (p) => Math.sqrt(p.x * p.x + p.y * p.y);
 
@@ -47,6 +47,8 @@ const dot = (p, q) => p.x * q.x + p.y * q.y;
 const clearCanvas = () => {
   context.clearRect(0, 0, canvas.width, canvas.height);
 };
+
+const areEqual = (p, q) => p.x === q.x && p.y === q.y;
 
 const init = () => {
   context.lineCap = 'round';
@@ -73,8 +75,8 @@ const simplify = (points, threshold) => {
     const next = points[n + 1];
     if (
       !anchor ||
-      !next ||
-      !isLinearSequence(anchor, current, next, threshold) ||
+      ((!next || !isLinearSequence(anchor, current, next, threshold)) &&
+        !areEqual(anchor, current)) ||
       distance(anchor, current) > DISTANCE_THRESHOLD
     ) {
       anchor = current;
@@ -103,7 +105,15 @@ const drawStroke = (points) => {
     // Draw dot
     if (!p0 && !p1 && p2 && !p3) {
       context.beginPath();
-      context.ellipse(p2.x, p2.y, THICKNESS / 2, THICKNESS / 2, 0, 0, Math.PI * 2);
+      context.ellipse(
+        p2.x,
+        p2.y,
+        THICKNESS / 2,
+        THICKNESS / 2,
+        0,
+        0,
+        Math.PI * 2
+      );
       context.fill();
     }
 
@@ -118,7 +128,10 @@ const drawStroke = (points) => {
     // Draw quadratic bezier with right bias
     else if (!p0 && p1 && p2 && p3) {
       tangent = normalize(difference(p3, p1));
-      const c = difference(p2, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
+      const c = difference(
+        p2,
+        scale(tangent, distance(p1, p2) / CONTROL_DAMPING)
+      );
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
@@ -166,7 +179,10 @@ const drawStroke = (points) => {
       const c0 = sum(p1, scale(tangent, distance(p1, p2) / CONTROL_DAMPING));
 
       tangent = normalize(difference(p3, c0));
-      const c1 = difference(p2, scale(tangent, distance(c0, p2) / CONTROL_DAMPING));
+      const c1 = difference(
+        p2,
+        scale(tangent, distance(c0, p2) / CONTROL_DAMPING)
+      );
 
       context.beginPath();
       context.moveTo(p1.x, p1.y);
@@ -197,7 +213,15 @@ const drawStroke = (points) => {
       context.save();
       context.fillStyle = POINT_COLOR;
       context.beginPath();
-      context.ellipse(point.x, point.y, THICKNESS, THICKNESS, 0, 0, Math.PI * 2);
+      context.ellipse(
+        point.x,
+        point.y,
+        THICKNESS,
+        THICKNESS,
+        0,
+        0,
+        Math.PI * 2
+      );
       context.fill();
       context.restore();
     });
@@ -252,7 +276,10 @@ canvas.addEventListener('pointerdown', (event) => {
 canvas.addEventListener('pointermove', (event) => {
   if (event.buttons === 1 && currentStroke !== null) {
     const currentPoint = getCanvasPoint({ x: event.clientX, y: event.clientY });
-    if (lastPoint === null || distance(lastPoint, currentPoint) > SEGMENT_SIZE) {
+    if (
+      lastPoint === null ||
+      distance(lastPoint, currentPoint) > SEGMENT_SIZE
+    ) {
       lastPoint = currentPoint;
       currentStroke.push(currentPoint);
     }
