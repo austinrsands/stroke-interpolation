@@ -2,18 +2,18 @@ const canvas = document.getElementById('canvas');
 const context = canvas.getContext('2d');
 
 // Larger for demo
-// const SHOW_POINTS = true;
-// const SHOW_CONTROLS = true;
-// const LINEARITY_THRESHOLD = 5;
-// const DISTANCE_THRESHOLD = 1000;
-// const CONTROL_DAMPING = 4;
+const SHOW_POINTS = true;
+const SHOW_CONTROLS = true;
+const LINEARITY_THRESHOLD = 5;
+const DISTANCE_THRESHOLD = 1000;
+const CONTROL_DAMPING = 2;
 
 // Smaller for actual use
-const SHOW_POINTS = false;
-const SHOW_CONTROLS = false;
-const LINEARITY_THRESHOLD = 4;
-const DISTANCE_THRESHOLD = 20;
-const CONTROL_DAMPING = 2;
+// const SHOW_POINTS = false;
+// const SHOW_CONTROLS = false;
+// const LINEARITY_THRESHOLD = 4;
+// const DISTANCE_THRESHOLD = 20;
+// const CONTROL_DAMPING = 2;
 
 const THICKNESS = 30;
 const FRAMERATE = 60;
@@ -22,7 +22,7 @@ const STROKE_COLOR = '#121212';
 const POINT_COLOR = '#1dde64';
 const CONTROL_COLOR = '#00bbff';
 
-let strokes = [];
+let strokeSegments = [];
 
 const midpoint = (p, q) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
 
@@ -86,16 +86,16 @@ const simplify = (points, threshold) => {
   return simplified;
 };
 
-let tangent;
-const drawStroke = (points) => {
+const drawStroke = (points, color) => {
   // Save previous context state
   context.save();
-
+  
   // Setup parameters
-  context.strokeStyle = STROKE_COLOR;
-  context.fillColor = STROKE_COLOR;
+  context.strokeStyle = color;
+  context.fillColor = color;
   context.lineWidth = THICKNESS;
-
+  
+  let tangent;
   for (let n = 0; n < points.length; n++) {
     const p0 = points[n - 2];
     const p1 = points[n - 1];
@@ -181,7 +181,7 @@ const drawStroke = (points) => {
       tangent = normalize(difference(p3, c0));
       const c1 = difference(
         p2,
-        scale(tangent, distance(c0, p2) / CONTROL_DAMPING)
+        scale(tangent, distance(p1, p2) / CONTROL_DAMPING)
       );
 
       context.beginPath();
@@ -234,9 +234,9 @@ const drawStroke = (points) => {
 const update = () => {
   clearCanvas();
 
-  strokes.forEach((stroke) => {
-    const simplified = simplify(stroke, LINEARITY_THRESHOLD);
-    drawStroke(simplified);
+  strokeSegments.forEach((strokeSegment) => {
+    const points = simplify(strokeSegment.points, LINEARITY_THRESHOLD);
+    drawStroke(points, 'black');
   });
 };
 
@@ -260,7 +260,7 @@ const getCanvasPoint = (point) => {
 window.addEventListener('load', init);
 window.addEventListener('keyup', (event) => {
   if (event.key === ' ') {
-    strokes = [];
+    strokeSegments = [];
   }
   clearCanvas();
 });
@@ -269,8 +269,10 @@ let lastPoint = null;
 let currentStroke = null;
 canvas.addEventListener('pointerdown', (event) => {
   lastPoint = getCanvasPoint({ x: event.clientX, y: event.clientY });
-  currentStroke = [lastPoint];
-  strokes.push(currentStroke);
+  currentStroke = {
+    points: [lastPoint]
+  };
+  strokeSegments.push(currentStroke);
 });
 
 canvas.addEventListener('pointermove', (event) => {
@@ -281,7 +283,7 @@ canvas.addEventListener('pointermove', (event) => {
       distance(lastPoint, currentPoint) > SEGMENT_SIZE
     ) {
       lastPoint = currentPoint;
-      currentStroke.push(currentPoint);
+      currentStroke.points.push(currentPoint);
     }
   }
 });
@@ -289,7 +291,7 @@ canvas.addEventListener('pointermove', (event) => {
 canvas.addEventListener('pointerup', (event) => {
   if (currentStroke !== null) {
     lastPoint = getCanvasPoint({ x: event.clientX, y: event.clientY });
-    currentStroke.push(lastPoint);
+    currentStroke.points.push(lastPoint);
     currentStroke = null;
   }
 });
