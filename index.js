@@ -2,18 +2,18 @@ const canvas = document.getElementById('canvas');
 const context = canvas.getContext('2d');
 
 // Larger for demo
-const SHOW_POINTS = true;
-const SHOW_CONTROLS = true;
-const LINEARITY_THRESHOLD = 5;
-const DISTANCE_THRESHOLD = 1000;
-const CONTROL_DAMPING = 2;
+// const SHOW_POINTS = true;
+// const SHOW_CONTROLS = true;
+// const LINEARITY_THRESHOLD = 5;
+// const DISTANCE_THRESHOLD = 1000;
+// const CONTROL_DAMPING = 2;
 
 // Smaller for actual use
-// const SHOW_POINTS = false;
-// const SHOW_CONTROLS = false;
-// const LINEARITY_THRESHOLD = 4;
-// const DISTANCE_THRESHOLD = 20;
-// const CONTROL_DAMPING = 2;
+const SHOW_POINTS = true;
+const SHOW_CONTROLS = false;
+const LINEARITY_THRESHOLD = 4;
+const DISTANCE_THRESHOLD = 20;
+const CONTROL_DAMPING = 2;
 
 const THICKNESS = 30;
 const FRAMERATE = 60;
@@ -86,15 +86,136 @@ const simplify = (points, threshold) => {
   return simplified;
 };
 
+const segmentize = (points, firstTangent, lastTangent, tension = 0.5) => {
+  if (points.length === 1) return [{ p0: points[0] }];
+
+  let tangent = firstTangent;
+  const segments = [];
+  for (let n = 0; n < points.length - 1; n++) {
+    const p0 = points[n];
+    const p1 = points[n + 1];
+    const p2 = points[n + 2];
+    const d = distance(p1, p0);
+    const s = (d / 2) * (1 - tension);
+
+    let c0, c1;
+
+    if (tangent) c0 = sum(p0, scale(tangent, s));
+
+    if (p2) tangent = normalize(difference(p2, c0 || p0));
+    else if (lastTangent) tangent = lastTangent;
+
+    if (p2 || lastTangent) c1 = difference(p1, scale(tangent, s));
+
+    segments.push({ p0, c0, c1, p1 });
+  }
+  return segments;
+};
+
+const split = (segments, num) => {
+  const static = segments.slice(0, -num);
+  const dynamic = segments.slice(-num);
+  return [static, dynamic];
+};
+
+const drawSegments = (context, segments, color, thickness) => {
+  context.save();
+  context.strokeStyle = color;
+  context.fillStyle = color;
+  context.lineWidth = thickness;
+
+  segments.forEach((segment) => {
+    const p0 = segment.p0;
+    const c0 = segment.c0;
+    const c1 = segment.c1;
+    const p1 = segment.p1;
+
+    context.beginPath();
+    if (!p1) {
+      context.ellipse(
+        p0.x,
+        p0.y,
+        thickness / 2,
+        thickness / 2,
+        0,
+        0,
+        Math.PI * 2
+      );
+      context.fill();
+    } else {
+      context.moveTo(p0.x, p0.y);
+      if (!c0 && !c1) context.lineTo(p1.x, p1.y);
+      else if (!c0) context.quadraticCurveTo(c1.x, c1.y, p1.x, p1.y);
+      else if (!c1) context.quadraticCurveTo(c0.x, c0.y, p1.x, p1.y);
+      else context.bezierCurveTo(c0.x, c0.y, c1.x, c1.y, p1.x, p1.y);
+      context.stroke();
+    }
+  });
+
+  if (SHOW_POINTS || SHOW_CONTROLS) {
+    context.save();
+    context.fillStyle = '#14db4a';
+    context.strokeStyle = '#1797ff';
+    segments.forEach((segment) => {
+      if (SHOW_CONTROLS) {
+        if (segment.c0) {
+          context.beginPath();
+          context.moveTo(segment.p0.x, segment.p0.y);
+          context.lineTo(segment.c0.x, segment.c0.y);
+          context.stroke();
+        }
+
+        if (segment.c1) {
+          context.beginPath();
+          context.moveTo(segment.p1.x, segment.p1.y);
+          context.lineTo(segment.c1.x, segment.c1.y);
+          context.stroke();
+        }
+      }
+
+      if (SHOW_POINTS) {
+        context.beginPath();
+        context.ellipse(
+          segment.p0.x,
+          segment.p0.y,
+          thickness / 2,
+          thickness / 2,
+          0,
+          0,
+          Math.PI * 2
+        );
+        context.fill();
+      }
+
+      if (segment.p1) {
+        context.beginPath();
+        context.ellipse(
+          segment.p1.x,
+          segment.p1.y,
+          thickness / 2,
+          thickness / 2,
+          0,
+          0,
+          Math.PI * 2
+        );
+        context.fill();
+      }
+    });
+    context.restore();
+  }
+
+  context.restore();
+};
+
 const drawStroke = (points, color) => {
   // Save previous context state
   context.save();
-  
+
   // Setup parameters
   context.strokeStyle = color;
   context.fillColor = color;
   context.lineWidth = THICKNESS;
-  
+
   let tangent;
   for (let n = 0; n < points.length; n++) {
     const p0 = points[n - 2];
@@ -236,7 +357,10 @@ const update = () => {
 
   strokeSegments.forEach((strokeSegment) => {
     const points = simplify(strokeSegment.points, LINEARITY_THRESHOLD);
-    drawStroke(points, 'black');
+    const segments = segmentize(points);
+    const [static, dynamic] = split(segments, 5);
+    drawSegments(context, static, 'red', THICKNESS);
+    drawSegments(context, dynamic, 'black', THICKNESS);
   });
 };
 
@@ -270,7 +394,7 @@ let currentStroke = null;
 canvas.addEventListener('pointerdown', (event) => {
   lastPoint = getCanvasPoint({ x: event.clientX, y: event.clientY });
   currentStroke = {
-    points: [lastPoint]
+    points: [lastPoint],
   };
   strokeSegments.push(currentStroke);
 });
